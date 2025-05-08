@@ -27,13 +27,15 @@ const ImageResize = () => {
                 console.log(err);
             }
         }
+        console.log("fileArr :: ", fileArr);
+
         downloadZip(fileArr);
     };
 
     const downloadZip = async (base64Files) => {
         if (base64Files) {
             const zip = new JSZip();
-
+            console.log("base64Files :: ", base64Files);
             base64Files.forEach((file) => {
                 // Remove the "data:image/png;base64," prefix if present
                 const cleanedBase64 = file.data.replace(/^data:image\/\w+;base64,/, '');
