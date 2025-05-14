@@ -94,7 +94,7 @@ const BulkImageCropperWithZip = () => {
 
     return (
         <div>
-            <h1>Bulk Image Cropper with ZIP Download</h1>
+            <h1>Image Cropper</h1>
             <input
                 type="file"
                 accept="image/jpeg, image/png"

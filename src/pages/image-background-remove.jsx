@@ -100,7 +100,7 @@ const BulkImageBackgroundRemoverLocal = () => {
 
     return (
         <div>
-            <h1>Bulk Background Remover (No API)</h1>
+            <h1>Background Remover (No API)</h1>
             <input
                 type="file"
                 accept="image/jpeg, image/png"

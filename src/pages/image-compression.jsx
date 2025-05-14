@@ -63,7 +63,7 @@ const BulkImageCompressorWithZip = () => {
 
     return (
         <div>
-            <h1>Bulk Image Compressor with ZIP Download</h1>
+            <h1>Image Compressor</h1>
             <input
                 type="file"
                 accept="image/jpeg, image/png"
