@@ -54,6 +54,16 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
+.menubtn {
+  padding: 5px;
+  margin: 5px;
+  border: 1px solid;
+  cursor: pointer;
+}
+.outputImages {
+  display: inline-block;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;

@@ -1,106 +1,148 @@
-import React, { useState } from 'react';
-import * as bodyPix from '@tensorflow-models/body-pix';
-import '@tensorflow/tfjs'; // Load TensorFlow.js backend
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
-const ImageBGRemove = () => {
+import React, { useState } from "react";
+import * as bodyPix from "@tensorflow-models/body-pix";
+import "@tensorflow/tfjs-backend-webgl";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
+
+const BulkImageBackgroundRemoverLocal = () => {
+    const [images, setImages] = useState([]);
     const [processedImages, setProcessedImages] = useState([]);
+    const [loading, setLoading] = useState(false);
 
-    const handleFiles = async (e) => {
-        const files = Array.from(e.target.files);
-        const model = await bodyPix.load(); // Load model once
-        let fileArr = [];
-        const results = await Promise.all(
-            files.map(async (file) => {
-                // console.log(" filename :: ", file.name);
-
-                const image = await loadImage(file);
-
-                const mask = await model.segmentPerson(image);
-
-                const canvas = document.createElement('canvas');
-                canvas.width = image.width;
-                canvas.height = image.height;
-                const ctx = canvas.getContext('2d');
-
-                // Draw original image
-                ctx.drawImage(image, 0, 0);
-
-                // Get image data and apply transparency
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const pixels = imageData.data;
-
-                for (let i = 0; i < mask.data.length; i++) {
-                    if (mask.data[i] === 0) {
-                        pixels[i * 4 + 3] = 0; // Set alpha to 0 for background
-                    }
-                }
-
-                ctx.putImageData(imageData, 0, 0);
-                fileArr.push({
-                    name: file.name,
-                    data: canvas.toDataURL('image/png'),
-                });
-                // console.log("kkkk :: ", canvas.toDataURL('image/png'));
-
-                return canvas.toDataURL('image/png');
-            })
+    const handleImageUpload = (event) => {
+        const files = Array.from(event.target.files);
+        const validFiles = files.filter((file) =>
+            ["image/jpeg", "image/png"].includes(file.type)
         );
 
-        console.log("fileArr :: ", fileArr);
+        const imagePromises = validFiles.map(
+            (file) =>
+                new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        resolve({ fileName: file.name, url: e.target.result, file });
+                    };
+                    reader.readAsDataURL(file);
+                })
+        );
 
-        setProcessedImages(results);
-        downloadZip(fileArr);
+        Promise.all(imagePromises).then((images) => {
+            setImages(images);
+        });
     };
 
-    const downloadZip = async (base64Files) => {
-        if (base64Files) {
-            const zip = new JSZip();
+    const removeBackgrounds = async () => {
+        setLoading(true);
 
-            console.log("base64Files :: ", base64Files);
+        // Load the BodyPix model
+        const net = await bodyPix.load();
 
-            base64Files.forEach((file) => {
-                // Remove the "data:image/png;base64," prefix if present
-                const cleanedBase64 = file.data.replace(/^data:image\/\w+;base64,/, '');
+        const processed = [];
 
-                zip.file(file.name, cleanedBase64, {
-                    base64: true,
-                    createFolders: true,
-                });
+        for (const image of images) {
+            const img = new Image();
+            img.src = image.url;
+
+            await new Promise((resolve) => {
+                img.onload = async () => {
+                    // Create a canvas element
+                    const canvas = document.createElement("canvas");
+                    const ctx = canvas.getContext("2d");
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+
+                    // Perform background removal using BodyPix
+                    const segmentation = await net.segmentPerson(img);
+
+                    // Clear the canvas and apply the mask
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0);
+
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageData.data;
+
+                    for (let i = 0; i < data.length; i += 4) {
+                        // If the pixel is part of the background, make it transparent
+                        if (!segmentation.data[i / 4]) {
+                            data[i + 3] = 0; // Set alpha channel to 0
+                        }
+                    }
+
+                    ctx.putImageData(imageData, 0, 0);
+
+                    // Convert the canvas to a Data URL
+                    const processedUrl = canvas.toDataURL("image/png");
+                    processed.push({ fileName: image.fileName, url: processedUrl });
+
+                    resolve();
+                };
             });
-
-            // Generate the zip as a Blob
-            const blob = await zip.generateAsync({ type: "blob" });
-
-            // Trigger download
-            saveAs(blob, "my_files_bg_remove.zip");
-            // window.location.reload();
         }
+
+        setProcessedImages(processed);
+        setLoading(false);
     };
 
+    const downloadAsZip = () => {
+        const zip = new JSZip();
 
-    const loadImage = (file) => {
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const img = new Image();
-                img.onload = () => resolve(img);
-                img.src = reader.result;
-            };
-            reader.readAsDataURL(file);
+        processedImages.forEach((image) => {
+            zip.file(
+                image.fileName,
+                fetch(image.url).then((res) => res.blob())
+            );
+        });
+
+        zip.generateAsync({ type: "blob" }).then((content) => {
+            saveAs(content, "processed_images.zip");
         });
     };
 
     return (
         <div>
-            <h2>Bulk Background Remover (No API)</h2>
-            <input type="file" multiple accept="image/*" onChange={handleFiles} />
-            <div style={{ display: 'flex', flexWrap: 'wrap', marginTop: 20 }}>
-                {processedImages.map((src, i) => (
-                    <img key={i} src={src} alt="Processed" style={{ width: 200, margin: 10 }} />
-                ))}
-            </div>
+            <h1>Bulk Background Remover (No API)</h1>
+            <input
+                type="file"
+                accept="image/jpeg, image/png"
+                multiple
+                onChange={handleImageUpload}
+            />
+            {images.length > 0 && (
+                <div>
+                    <h2>Uploaded Images:</h2>
+                    {images.map((image, index) => (
+                        <img
+                            key={index}
+                            src={image.url}
+                            alt={`Uploaded ${index}`}
+                            style={{ maxWidth: "200px", margin: "10px" }}
+                        />
+                    ))}
+                    <br />
+                    <button onClick={removeBackgrounds} disabled={loading}>
+                        {loading ? "Processing..." : "Remove Backgrounds"}
+                    </button>
+                </div>
+            )}
+            {processedImages.length > 0 && (
+                <div>
+                    <h2>Processed Images:</h2>
+                    {processedImages.map((image, index) => (
+                        <div className="outputImages" key={index}>
+                            <img
+                                src={image.url}
+                                alt={`Processed ${index}`}
+                                style={{ maxWidth: "200px", margin: "10px" }}
+                            />
+                            <p>{image.fileName}</p>
+                        </div>
+                    ))}
+                    <br />
+                    <button onClick={downloadAsZip}>Download as ZIP</button>
+                </div>
+            )}
         </div>
     );
 };
-export default ImageBGRemove
+
+export default BulkImageBackgroundRemoverLocal;

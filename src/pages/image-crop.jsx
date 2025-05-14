@@ -1,98 +1,142 @@
-import React, { useState, useCallback } from 'react';
-import Cropper from 'react-easy-crop';
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
+import React, { useState } from "react";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
-function getCroppedImg(imageSrc, crop, fileName) {
-    return new Promise((resolve) => {
-        const image = new Image();
-        image.src = imageSrc;
-        image.onload = () => {
-            const canvas = document.createElement('canvas');
-            const scaleX = image.naturalWidth / image.width;
-            const scaleY = image.naturalHeight / image.height;
-            canvas.width = crop.width;
-            canvas.height = crop.height;
-            const ctx = canvas.getContext('2d');
-
-            ctx.drawImage(
-                image,
-                crop.x * scaleX,
-                crop.y * scaleY,
-                crop.width * scaleX,
-                crop.height * scaleY,
-                0,
-                0,
-                crop.width,
-                crop.height
-            );
-
-            canvas.toBlob((blob) => {
-                resolve({ blob, fileName });
-            }, 'image/jpeg');
-        };
-    });
-}
-
-export default function BulkImageCropper() {
+const BulkImageCropperWithZip = () => {
     const [images, setImages] = useState([]);
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [crop, setCrop] = useState({ x: 0, y: 0 });
-    const [zoom, setZoom] = useState(1);
-    const [croppedAreas, setCroppedAreas] = useState([]);
+    const [croppedImages, setCroppedImages] = useState([]);
+    const [loading, setLoading] = useState(false);
 
-    const onCropComplete = useCallback((croppedArea, croppedAreaPixels) => {
-        const newAreas = [...croppedAreas];
-        newAreas[currentIndex] = croppedAreaPixels;
-        setCroppedAreas(newAreas);
-    }, [croppedAreas, currentIndex]);
+    const handleImageUpload = (event) => {
+        const files = Array.from(event.target.files);
+        const validFiles = files.filter((file) =>
+            ["image/jpeg", "image/png"].includes(file.type)
+        );
 
-    const handleFiles = (e) => {
-        const files = Array.from(e.target.files).map((file) => ({
-            src: URL.createObjectURL(file),
-            name: file.name
-        }));
-        setImages(files);
-        setCroppedAreas(Array(files.length).fill(null));
+        const imagePromises = validFiles.map(
+            (file) =>
+                new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        resolve({ fileName: file.name, url: e.target.result, file });
+                    };
+                    reader.readAsDataURL(file);
+                })
+        );
+
+        Promise.all(imagePromises).then((images) => {
+            setImages(images);
+        });
     };
 
-    const downloadAll = async () => {
-        const zip = new JSZip();
+    const cropImages = async () => {
+        setLoading(true);
+        const cropped = [];
 
-        for (let i = 0; i < images.length; i++) {
-            const { blob, fileName } = await getCroppedImg(images[i].src, croppedAreas[0], images[i].name);
-            zip.file(`${fileName}`, blob);
+        for (const image of images) {
+            const img = new Image();
+            img.src = image.url;
+
+            await new Promise((resolve) => {
+                img.onload = () => {
+                    // Define cropping dimensions
+                    const cropWidth = 500; // Width of the cropped image
+                    const cropHeight = 500; // Height of the cropped image
+                    const centerX = img.width / 2 - cropWidth / 2;
+                    const centerY = img.height / 2 - cropHeight / 2;
+
+                    // Create a canvas to crop the image
+                    const canvas = document.createElement("canvas");
+                    const ctx = canvas.getContext("2d");
+                    canvas.width = cropWidth;
+                    canvas.height = cropHeight;
+
+                    // Draw the cropped portion of the image
+                    ctx.drawImage(
+                        img,
+                        centerX,
+                        centerY,
+                        cropWidth,
+                        cropHeight,
+                        0,
+                        0,
+                        cropWidth,
+                        cropHeight
+                    );
+
+                    // Convert the cropped image to a Data URL
+                    const croppedUrl = canvas.toDataURL("image/png");
+                    cropped.push({ fileName: image.fileName, url: croppedUrl });
+
+                    resolve();
+                };
+            });
         }
 
-        zip.generateAsync({ type: 'blob' }).then((content) => {
-            saveAs(content, 'cropped_images.zip');
+        setCroppedImages(cropped);
+        setLoading(false);
+    };
+
+    const downloadAsZip = () => {
+        const zip = new JSZip();
+
+        croppedImages.forEach((image) => {
+            zip.file(
+                image.fileName,
+                fetch(image.url).then((res) => res.blob())
+            );
+        });
+
+        zip.generateAsync({ type: "blob" }).then((content) => {
+            saveAs(content, "cropped_images.zip");
         });
     };
 
     return (
         <div>
-            <h1>Images Crop</h1>
-            <input type="file" accept="image/*" multiple onChange={handleFiles} />
+            <h1>Bulk Image Cropper with ZIP Download</h1>
+            <input
+                type="file"
+                accept="image/jpeg, image/png"
+                multiple
+                onChange={handleImageUpload}
+            />
             {images.length > 0 && (
-                <>
-                    <div style={{ position: 'relative', width: '400px', height: '300px' }}>
-                        <Cropper
-                            image={images[currentIndex].src}
-                            crop={crop}
-                            zoom={zoom}
-                            aspect={4 / 3}
-                            onCropChange={setCrop}
-                            onZoomChange={setZoom}
-                            onCropComplete={onCropComplete}
+                <div>
+                    <h2>Uploaded Images:</h2>
+                    {images.map((image, index) => (
+                        <img
+                            key={index}
+                            src={image.url}
+                            alt={`Uploaded ${index}`}
+                            style={{ maxWidth: "200px", margin: "10px" }}
                         />
-                    </div>
-                    <div>
-                        <button onClick={() => setCurrentIndex((prev) => Math.max(prev - 1, 0))}>Previous</button>
-                        <button onClick={() => setCurrentIndex((prev) => Math.min(prev + 1, images.length - 1))}>Next</button>
-                        <button onClick={downloadAll}>Download Cropped Images (ZIP)</button>
-                    </div>
-                </>
+                    ))}
+                    <br />
+                    <button onClick={cropImages} disabled={loading}>
+                        {loading ? "Cropping..." : "Crop Images"}
+                    </button>
+                </div>
+            )}
+            {croppedImages.length > 0 && (
+                <div>
+                    <h2>Cropped Images:</h2>
+                    {croppedImages.map((image, index) => (
+                        <div className="outputImages" key={index}>
+                            <img
+                                src={image.url}
+                                alt={`Cropped ${index}`}
+                                style={{ maxWidth: "200px", margin: "10px" }}
+                            />
+                            <p>{image.fileName}</p>
+                        </div>
+                    ))}
+                    <br />
+                    <button onClick={downloadAsZip}>Download as ZIP</button>
+                </div>
             )}
         </div>
     );
-}
+};
+
+export default BulkImageCropperWithZip;

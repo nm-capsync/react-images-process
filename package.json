@@ -13,6 +13,7 @@
     "@peacechen/react-image-file-resizer": "^1.0.0",
     "@tensorflow-models/body-pix": "^2.2.1",
     "@tensorflow/tfjs": "^4.22.0",
+    "browser-image-compression": "^2.0.2",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",
     "react": "^19.1.0",
